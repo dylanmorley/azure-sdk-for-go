@@ -3,6 +3,7 @@
 . "${PSScriptRoot}\SemVer.ps1"
 
 $RELEASE_TITLE_REGEX = "(?<releaseNoteTitle>^\#+\s+(?<version>$([AzureEngSemanticVersion]::SEMVER_REGEX))(\s+(?<releaseStatus>\(.+\))))"
+$SECTIONS_HEADER_REGEX = "^###\s(?<sectionName>.*)"
 $CHANGELOG_UNRELEASED_STATUS = "(Unreleased)"
 $CHANGELOG_DATE_FORMAT = "yyyy-MM-dd"
 $RecommendedSectionHeaders = @("Features Added", "Breaking Changes", "Bugs Fixed", "Other Changes")
@@ -56,7 +57,7 @@ function Get-ChangeLogEntriesFromContent {
       }
       else {
         if ($changeLogEntry) {
-          if ($line.Trim() -match "^###\s(?<sectionName>.*)")
+          if ($line.Trim() -match $SECTIONS_HEADER_REGEX)
           {
             $sectionName = $matches["sectionName"].Trim()
             $changeLogEntry.Sections[$sectionName] = @()
@@ -304,37 +305,28 @@ function Remove-EmptySections {
     $parsedSections = $ChangeLogEntry.Sections
     $sanitizedReleaseContent = New-Object System.Collections.ArrayList(,$releaseContent)
   
-    foreach ($key in $parsedSections.Keys) 
+    foreach ($key in @($parsedSections.Key)) 
     {
       if ([System.String]::IsNullOrWhiteSpace($parsedSections[$key]))
       {
         for ($i = 0; $i -lt $sanitizedReleaseContent.Count; $i++)
         {
           $line = $sanitizedReleaseContent[$i]
-          if ($line -eq "### $key")
+          if ($line -match $SECTIONS_HEADER_REGEX)
           {
             $sanitizedReleaseContent.RemoveAt($i)
             $j = $i
-            while($j -lt $sanitizedReleaseContent.Count)
+            while($j -lt $sanitizedReleaseContent.Count -and [System.String]::IsNullOrWhiteSpace($sanitizedReleaseContent[$j]))
             {
-              $line = $sanitizedReleaseContent[$j]
-              if ([System.String]::IsNullOrWhiteSpace($line))
-              {
-                $sanitizedReleaseContent.RemoveAt($j)
-              }
-              else 
-              {
-                break
-              }
+              $sanitizedReleaseContent.RemoveAt($j)
             }
-            $sectionsToRemove += $key
+            $ChangeLogEntry.Sections.Remove($key)
             break
           }
         }
       }
     }
     $ChangeLogEntry.ReleaseContent = $sanitizedReleaseContent.ToArray()
-    $sectionsToRemove | % { $ChangeLogEntry.Sections.Remove($_) }
   }
   return $changeLogEntry
 }
